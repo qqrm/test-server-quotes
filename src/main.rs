@@ -54,40 +54,34 @@ async fn login(
     let login_req = item.0;
     dbg!(&login_req);
 
-    // let resp =
-    if !state.users.lock().unwrap().contains_key(&login_req.login) {
-        // return user not in InProcess
-    }
-    let mut user_state = state.authorized.lock().unwrap();
-    dbg!(&user_state);
+    let resp = if state.users.lock().unwrap().contains_key(&login_req.login) {
+        let mut authorized = state.authorized.lock().unwrap();
+        let user_info = authorized.get(&login_req.login);
 
-    // if UserState::InProcess == user_state.1 && req_login.hash == user_state.0 {
-    //     let hash = md5::compute(
-    //         req_login.hash
-    //             + state
-    //                 .users
-    //                 .lock()
-    //                 .unwrap()
-    //                 .get(&req_login.login)
-    //                 .expect("user not exist"),
-    //     );
-    //     // user_state.0 = format!("{:x}", hash);
-    //     // user_state.1 = UserState::Auth;
+        match user_info {
+            Some((last_hash, user_state)) => {
+                if UserState::InProcess == *user_state && login_req.hash == *last_hash {
+                    let new_hash = md5::compute(last_hash.clone());
 
-    //     let resp = LoginSuccMessage {
-    //         hash: format!("{:?}", hash),
-    //     };
-    //     // serde_json::to_string(&resp).unwrap()
-    // } else {
-    // "{\"error\"}".to_string()
-    // }
+                    let login_succ_mess = LoginSuccMessage {
+                        hash: format!("{:x}", new_hash),
+                    };
 
-    // "{\"in dev\"}".to_string()
-    // } else {
-    //     "{\"user not allowed\"}".to_string()
-    // };
+                    authorized.insert(
+                        login_req.login,
+                        (login_succ_mess.hash.clone(), UserState::Auth),
+                    );
+                    serde_json::to_string(&login_succ_mess).expect("json login cucces conv failed")
+                } else {
+                    "{\"smth wrong\"}".to_string()
+                }
+            }
+            None => "{\"auth not started\"}".to_string(),
+        }
+    } else {
+        "{\"auth not started\"}".to_string()
+    };
 
-    let resp = "{\"in dev\"}".to_string();
     HttpResponse::Ok().json(resp)
 }
 
