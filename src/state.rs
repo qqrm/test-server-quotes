@@ -21,7 +21,11 @@ pub struct State {
 impl State {
     pub fn new() -> State {
         // users already registered (better way is using session id or smth)
-        let users = HashMap::from([(("one".to_string()), "pass1".to_string())]);
+        let users = HashMap::from([
+            (("one".to_string()), "pass1".to_string()),
+            ("two".to_string(), "pass2".to_string()),
+            ("three".to_string(), "pass3".to_string()),
+        ]);
 
         let authorized = HashMap::new();
 
