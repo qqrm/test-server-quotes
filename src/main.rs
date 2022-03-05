@@ -2,18 +2,12 @@ pub mod messages;
 mod state;
 mod utils;
 
-use std::borrow::BorrowMut;
-
-use actix_web::{
-    dev::AppConfig, error, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
-};
-use futures::{lock::Mutex, StreamExt};
-use json::JsonValue;
+use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer};
+use futures::lock::Mutex;
 use messages::{
     login::LoginReqMessage, logout::LogoutReqMessage, quote::QuoteReqMessage, time::ReqTimeMessage,
 };
 use rand::prelude::SliceRandom;
-use serde::{Deserialize, Serialize};
 use state::State;
 use utils::get_unix_time_in_secs;
 
@@ -87,13 +81,8 @@ async fn login(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpRespon
     HttpResponse::Ok().json(resp)
 }
 
-async fn get_quote(
-    item: web::Json<QuoteReqMessage>,
-    req: HttpRequest,
-    state: web::Data<Mutex<State>>,
-) -> HttpResponse {
+async fn get_quote(item: web::Json<QuoteReqMessage>, req: HttpRequest) -> HttpResponse {
     let quote_req = item.0;
-    dbg!(&quote_req);
 
     let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
     let mut state = data.as_ref().lock().await;
@@ -134,12 +123,11 @@ async fn get_quote(
         None => "{\"user not auth\"}".to_string(),
     };
 
-    HttpResponse::Ok().json(resp.to_string())
+    HttpResponse::Ok().json(resp)
 }
 
 async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResponse {
     let logout_req = item.0;
-    dbg!(&logout_req);
 
     let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
     let mut state = data.as_ref().lock().await;
@@ -154,11 +142,8 @@ async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResp
                     .get(&logout_req.login)
                     .expect("user not register");
 
-            dbg!(&data);
-
             let hash = md5::compute(data);
             let hash = format!("{:x}", hash);
-            dbg!(&hash);
 
             if UserState::Auth == *user_state && logout_req.hash == hash {
                 let logout_resp_mess = LogoutSuccMessage {};
@@ -172,7 +157,7 @@ async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResp
         None => "{\"user not auth\"}".to_string(),
     };
 
-    HttpResponse::Ok().json(resp.to_string())
+    HttpResponse::Ok().json(resp)
 }
 
 #[actix_web::main]
@@ -184,7 +169,6 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            // enable logger
             .wrap(middleware::Logger::default())
             .app_data(web::JsonConfig::default().limit(4096))
             .app_data(data.clone())

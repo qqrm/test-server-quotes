@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
 
 type Login = String;
 type Pass = String;
