@@ -111,8 +111,36 @@ async def simple_integration_test():
             "pow": pow
         }),
         headers={"content-type": "application/json"})
+
+    assert 200 == resp.status
+
+    json_resp = json.loads(await resp.json())
+
     print(str(resp))
     print(await resp.text())
+
+    # logout
+
+    hash: str = json_resp["hash"]
+    data = str(hash + password)
+    print("data: ", data)
+
+    new_hash: str = hashlib.md5(
+        data.encode('utf-8')).hexdigest()
+
+    print("new hash: ", new_hash)
+
+    resp = await aiohttp.ClientSession().request(
+        "post", 'http://localhost:9999/logout',
+        data=json.dumps({
+            "login": username,
+            "hash": new_hash
+        }),
+        headers={"content-type": "application/json"})
+
+    assert 200 == resp.status
+
+    print("SUCCESS")
 
 
 asyncio.get_event_loop().run_until_complete(simple_integration_test())

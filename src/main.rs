@@ -9,14 +9,19 @@ use actix_web::{
 };
 use futures::{lock::Mutex, StreamExt};
 use json::JsonValue;
-use messages::{login::LoginReqMessage, quote::QuoteReqMessage, time::ReqTimeMessage};
+use messages::{
+    login::LoginReqMessage, logout::LogoutReqMessage, quote::QuoteReqMessage, time::ReqTimeMessage,
+};
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 use state::State;
 use utils::get_unix_time_in_secs;
 
 use crate::{
-    messages::{login::LoginSuccMessage, quote::QuoteRespMessage, time::RespTimeMessage},
+    messages::{
+        login::LoginSuccMessage, logout::LogoutSuccMessage, quote::QuoteRespMessage,
+        time::RespTimeMessage,
+    },
     state::UserState,
 };
 
@@ -132,6 +137,44 @@ async fn get_quote(
     HttpResponse::Ok().json(resp.to_string())
 }
 
+async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResponse {
+    let logout_req = item.0;
+    dbg!(&logout_req);
+
+    let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
+    let mut state = data.as_ref().lock().await;
+
+    let user_info = state.authorized.get(&logout_req.login);
+
+    let resp = match user_info {
+        Some((last_hash, user_state)) => {
+            let data = last_hash.clone()
+                + state
+                    .users
+                    .get(&logout_req.login)
+                    .expect("user not register");
+
+            dbg!(&data);
+
+            let hash = md5::compute(data);
+            let hash = format!("{:x}", hash);
+            dbg!(&hash);
+
+            if UserState::Auth == *user_state && logout_req.hash == hash {
+                let logout_resp_mess = LogoutSuccMessage {};
+
+                state.authorized.remove(&logout_req.login);
+                serde_json::to_string(&logout_resp_mess).expect("json quote resp conv failed")
+            } else {
+                "{\"access denied\"}".to_string()
+            }
+        }
+        None => "{\"user not auth\"}".to_string(),
+    };
+
+    HttpResponse::Ok().json(resp.to_string())
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=info");
@@ -148,15 +191,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/time").route(web::post().to(get_time)))
             .service(web::resource("/auth").route(web::post().to(login)))
             .service(web::resource("/quote").route(web::post().to(get_quote)))
-
-        // .service(
-        // web::resource("/extractor2")
-        // .app_data(web::JsonConfig::default().limit(1024)) // <- limit size of the payload (resource level)
-        // .route(web::post().to(extract_item)),
-        // )
-        // .service(web::resource("/manual").route(web::post().to(index_manual)))
-        // .service(web::resource("/mjsonrust").route(web::post().to(index_mjsonrust)))
-        // .service(web::resource("/").route(web::post().to(index)))
+            .service(web::resource("/logout").route(web::post().to(logout)))
     })
     .bind(("127.0.0.1", 9999))?
     .run()

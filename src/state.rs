@@ -9,7 +9,6 @@ type LastHash = String;
 
 #[derive(PartialEq, Debug)]
 pub enum UserState {
-    UnAuth,
     Auth,
     InProcess,
 }
