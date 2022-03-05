@@ -9,4 +9,5 @@ pub struct LoginReqMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LoginSuccMessage {
     pub hash: String,
+    pub difficulty: u64,
 }

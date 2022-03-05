@@ -2,61 +2,57 @@ pub mod messages;
 mod state;
 mod utils;
 
-use std::{borrow::BorrowMut, fmt::Write};
+use std::borrow::BorrowMut;
 
 use actix_web::{
     dev::AppConfig, error, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
 };
 use futures::{lock::Mutex, StreamExt};
 use json::JsonValue;
-use messages::{login::LoginReqMessage, time::ReqTimeMessage};
+use messages::{login::LoginReqMessage, quote::QuoteReqMessage, time::ReqTimeMessage};
+use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 use state::State;
 use utils::get_unix_time_in_secs;
 
-use crate::{messages::login::LoginSuccMessage, state::UserState};
+use crate::{
+    messages::{login::LoginSuccMessage, quote::QuoteRespMessage, time::RespTimeMessage},
+    state::UserState,
+};
 
-async fn get_time(
-    item: web::Json<ReqTimeMessage>,
-    req: HttpRequest,
-    state: web::Data<State>,
-) -> HttpResponse {
+async fn get_time(item: web::Json<ReqTimeMessage>, req: HttpRequest) -> HttpResponse {
     let req_time = item.0;
     dbg!(&req_time);
 
-    let resp = if state.users.lock().unwrap().contains_key(&req_time.login) {
-        let time = get_unix_time_in_secs().to_string();
+    let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
+    let mut state = data.as_ref().lock().await;
+
+    let resp = if state.users.contains_key(&req_time.login) {
+        let time = get_unix_time_in_secs();
         let hash = md5::compute(
-            time.clone()
-                + state
-                    .users
-                    .lock()
-                    .unwrap()
-                    .get(&req_time.login)
-                    .expect("user not exist"),
+            time.to_string() + state.users.get(&req_time.login).expect("user not exist"),
         );
-        state.authorized.lock().unwrap().insert(
+        state.authorized.insert(
             req_time.login,
             (format!("{:x}", hash), UserState::InProcess),
         );
-        format!("{{\"time\" : \"{}\" }}", time)
+
+        serde_json::to_string(&RespTimeMessage { time }).expect("json login cucces conv failed")
     } else {
         "{\"not allowed\"}".to_string()
     };
     HttpResponse::Ok().json(resp)
 }
 
-async fn login(
-    item: web::Json<LoginReqMessage>,
-    req: HttpRequest,
-    state: web::Data<State>,
-) -> HttpResponse {
+async fn login(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpResponse {
     let login_req = item.0;
     dbg!(&login_req);
 
-    let resp = if state.users.lock().unwrap().contains_key(&login_req.login) {
-        let mut authorized = state.authorized.lock().unwrap();
-        let user_info = authorized.get(&login_req.login);
+    let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
+    let mut state = data.as_ref().lock().await;
+
+    let resp = if state.authorized.contains_key(&login_req.login) {
+        let user_info = state.authorized.get(&login_req.login);
 
         match user_info {
             Some((last_hash, user_state)) => {
@@ -65,9 +61,10 @@ async fn login(
 
                     let login_succ_mess = LoginSuccMessage {
                         hash: format!("{:x}", new_hash),
+                        difficulty: state.difficulty,
                     };
 
-                    authorized.insert(
+                    state.authorized.insert(
                         login_req.login,
                         (login_succ_mess.hash.clone(), UserState::Auth),
                     );
@@ -85,21 +82,73 @@ async fn login(
     HttpResponse::Ok().json(resp)
 }
 
+async fn get_quote(
+    item: web::Json<QuoteReqMessage>,
+    req: HttpRequest,
+    state: web::Data<Mutex<State>>,
+) -> HttpResponse {
+    let quote_req = item.0;
+    dbg!(&quote_req);
+
+    let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
+    let mut state = data.as_ref().lock().await;
+
+    let user_info = state.authorized.get(&quote_req.login);
+
+    let resp = match user_info {
+        Some((last_hash, user_state)) => {
+            let data = last_hash.clone() + &quote_req.pow.to_string();
+            let pow_hash = md5::compute(data);
+            let pow_hash = format!("{:x}", pow_hash);
+
+            if UserState::Auth == *user_state
+                && pow_hash[..state.difficulty as usize]
+                    == "0".to_string().repeat(state.difficulty as usize)
+            {
+                let hash = md5::compute(last_hash);
+
+                let quote_resp_mess = QuoteRespMessage {
+                    quote: state
+                        .quotes
+                        .choose(&mut rand::thread_rng())
+                        .unwrap()
+                        .clone(),
+                    hash: format!("{:x}", hash),
+                    difficulty: state.difficulty,
+                };
+
+                state.authorized.insert(
+                    quote_req.login,
+                    (quote_resp_mess.hash.clone(), UserState::Auth),
+                );
+                serde_json::to_string(&quote_resp_mess).expect("json quote resp conv failed")
+            } else {
+                "{\"pow failed\"}".to_string()
+            }
+        }
+        None => "{\"user not auth\"}".to_string(),
+    };
+
+    HttpResponse::Ok().json(resp.to_string())
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=info");
     env_logger::init();
 
-    let state = web::Data::new(state::State::new());
+    let data = web::Data::new(Mutex::new(state::State::new()));
 
     HttpServer::new(move || {
         App::new()
             // enable logger
             .wrap(middleware::Logger::default())
             .app_data(web::JsonConfig::default().limit(4096))
-            .app_data(state.clone())
-            .service(web::resource("/gettime").route(web::post().to(get_time)))
+            .app_data(data.clone())
+            .service(web::resource("/time").route(web::post().to(get_time)))
             .service(web::resource("/auth").route(web::post().to(login)))
+            .service(web::resource("/quote").route(web::post().to(get_quote)))
+
         // .service(
         // web::resource("/extractor2")
         // .app_data(web::JsonConfig::default().limit(1024)) // <- limit size of the payload (resource level)
