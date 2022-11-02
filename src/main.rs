@@ -2,7 +2,19 @@ pub mod messages;
 mod state;
 mod utils;
 
-use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer};
+use crate::{
+    messages::{
+        login::LoginSuccMessage, logout::LogoutSuccMessage, quote::QuoteRespMessage,
+        time::RespTimeMessage,
+    },
+    state::UserState,
+};
+use actix_web::{
+    error::{self},
+    http::{header::ContentType, StatusCode},
+    middleware, web, App, HttpRequest, HttpResponse, HttpServer,
+};
+use derive_more::{Display, Error};
 use futures::lock::Mutex;
 use messages::{
     login::LoginReqMessage, logout::LogoutReqMessage, quote::QuoteReqMessage, time::ReqTimeMessage,
@@ -11,41 +23,74 @@ use rand::prelude::SliceRandom;
 use state::State;
 use utils::get_unix_time_in_secs;
 
-use crate::{
-    messages::{
-        login::LoginSuccMessage, logout::LogoutSuccMessage, quote::QuoteRespMessage,
-        time::RespTimeMessage,
-    },
-    state::UserState,
-};
+#[derive(Debug, Display, Error)]
+enum GetTimeError {
+    #[display(fmt = "user not exist")]
+    UserNotExist,
+
+    #[display(fmt = "not allowed")]
+    NotAllowed,
+
+    #[display(fmt = "json convertion failed")]
+    JsonConvertionFailed,
+
+    #[display(fmt = "internal state unavalible")]
+    InternalStateUnavailible,
+}
+
+impl error::ResponseError for GetTimeError {
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::build(self.status_code())
+            .insert_header(ContentType::html())
+            .body(self.to_string())
+    }
+
+    fn status_code(&self) -> StatusCode {
+        match *self {
+            GetTimeError::UserNotExist => StatusCode::UNAUTHORIZED,
+            GetTimeError::NotAllowed => StatusCode::UNAUTHORIZED,
+            GetTimeError::JsonConvertionFailed => StatusCode::INTERNAL_SERVER_ERROR,
+            GetTimeError::InternalStateUnavailible => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 async fn get_time(item: web::Json<ReqTimeMessage>, req: HttpRequest) -> HttpResponse {
     let req_time = item.0;
-    dbg!(&req_time);
 
-    let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
-    let mut state = data.as_ref().lock().await;
+    if let Some(data) = req.app_data::<web::Data<Mutex<State>>>() {
+        let mut state = data.as_ref().lock().await;
 
-    let resp = if state.users.contains_key(&req_time.login) {
-        let time = get_unix_time_in_secs();
-        let hash = md5::compute(
-            time.to_string() + state.users.get(&req_time.login).expect("user not exist"),
-        );
-        state.authorized.insert(
-            req_time.login,
-            (format!("{:x}", hash), UserState::InProcess),
-        );
+        if state.users.contains_key(&req_time.login) {
+            let time = get_unix_time_in_secs();
 
-        serde_json::to_string(&RespTimeMessage { time }).expect("json login cucces conv failed")
-    } else {
-        "{\"not allowed\"}".to_string()
-    };
-    HttpResponse::Ok().json(resp)
+            if let Some(user_state) = state.users.get(&req_time.login) {
+                let hash = md5::compute(time.to_string() + user_state);
+                state.authorized.insert(
+                    req_time.login,
+                    (format!("{:x}", hash), UserState::InProcess),
+                );
+            } else {
+                return HttpResponse::from_error(GetTimeError::UserNotExist);
+            }
+
+            // GetTimeError::JsonConvertionFailed
+            if let Ok(resp) = serde_json::to_string(&RespTimeMessage { time }) {
+                return HttpResponse::Ok().json(resp);
+            } else {
+                return HttpResponse::from_error(GetTimeError::JsonConvertionFailed);
+            }
+        }
+
+        return HttpResponse::from_error(GetTimeError::NotAllowed);
+    }
+
+    return HttpResponse::from_error(GetTimeError::InternalStateUnavailible);
 }
 
 async fn login(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpResponse {
     let login_req = item.0;
-    dbg!(&login_req);
+    // dbg!(&login_req);
 
     let data = req.app_data::<web::Data<Mutex<State>>>().unwrap();
     let mut state = data.as_ref().lock().await;
