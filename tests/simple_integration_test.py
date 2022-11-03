@@ -8,27 +8,24 @@ import hashlib
 from attr import has
 
 
-# looks bad, but works
-async def simple_integration_test(username="one", password="pass1"):
+# mb still looks bad, but works 🙄
 
-    # get time
-
-    session = aiohttp.ClientSession()
+async def get_time(session, username, password):
     resp = await session.request(
         "post", 'http://localhost:9999/time',
         data=json.dumps({"login": username}),
         headers={"content-type": "application/json"})
 
     assert 200 == resp.status
-
     json_resp = json.loads(await resp.json())
 
     assert json_resp["time"] > 0
-
     time = str(json_resp["time"])
 
-    # login
+    return time
 
+
+async def login(session, time, username, password):
     hash: str = hashlib.md5(str(time + password).encode('utf-8')).hexdigest()
 
     resp = await session.request(
@@ -40,68 +37,17 @@ async def simple_integration_test(username="one", password="pass1"):
         headers={"content-type": "application/json"})
 
     assert 200 == resp.status
-
     json_resp = json.loads(await resp.json())
-
     assert str(json_resp["hash"]) == hashlib.md5(
         hash.encode('utf-8')).hexdigest()
 
-    # get quote
-
     hash: str = json_resp["hash"]
+    difficult = json_resp["difficulty"]
+    return hash, difficult
 
-    difficult = int(json_resp["difficulty"])
-    pow = 0
-    new_hash = "    "
-    data = ""
 
-    while new_hash[:4] != str("0"*difficult):
-        pow += 1
-        data = str(hash + str(pow))
-        new_hash: str = hashlib.md5(
-            data.encode('utf-8')).hexdigest()
+async def logout(session, hash, username, password):
 
-    resp = await session.request(
-        "post", 'http://localhost:9999/quote',
-        data=json.dumps({
-            "login": username,
-            "pow": pow
-        }),
-        headers={"content-type": "application/json"})
-
-    assert 200 == resp.status
-    json_resp = json.loads(await resp.json())
-
-    # get one more quote
-
-    hash: str = json_resp["hash"]
-
-    difficult = int(json_resp["difficulty"])
-    pow = 0
-    new_hash = "    "
-    data = ""
-
-    while new_hash[:4] != str("0"*difficult):
-        pow += 1
-        data = str(hash + str(pow))
-        new_hash: str = hashlib.md5(
-            data.encode('utf-8')).hexdigest()
-
-    resp = await session.request(
-        "post", 'http://localhost:9999/quote',
-        data=json.dumps({
-            "login": username,
-            "pow": pow
-        }),
-        headers={"content-type": "application/json"})
-
-    assert 200 == resp.status
-
-    json_resp = json.loads(await resp.json())
-
-    # logout
-
-    hash: str = json_resp["hash"]
     data = str(hash + password)
 
     new_hash: str = hashlib.md5(
@@ -119,7 +65,64 @@ async def simple_integration_test(username="one", password="pass1"):
 
     await session.close()
 
-    print("SUCCESS SIMPLE")
+
+def calc_pow(difficult, hash):
+    pow = 0
+    new_hash = "    "
+    data = ""
+
+    while new_hash[:4] != str("0"*difficult):
+        pow += 1
+        data = str(hash + str(pow))
+        new_hash: str = hashlib.md5(
+            data.encode('utf-8')).hexdigest()
+
+    return pow
+
+
+async def simple_integration_test(username="one", password="pass1"):
+    session = aiohttp.ClientSession()
+    time = await get_time(session, username, password)
+    hash, difficult = await login(session, time, username, password)
+
+    # get quote
+    pow = calc_pow(difficult, hash)
+    resp = await session.request(
+        "post", 'http://localhost:9999/quote',
+        data=json.dumps({
+            "login": username,
+            "pow": pow
+        }),
+        headers={"content-type": "application/json"})
+
+    assert 200 == resp.status
+    json_resp = json.loads(await resp.json())
+    # print(json_resp["quote"])
+
+    # get one more quote
+    hash: str = json_resp["hash"]
+
+    difficult = int(json_resp["difficulty"])
+    pow = calc_pow(difficult, hash)
+    resp = await session.request(
+        "post", 'http://localhost:9999/quote',
+        data=json.dumps({
+            "login": username,
+            "pow": pow
+        }),
+        headers={"content-type": "application/json"})
+
+    assert 200 == resp.status
+
+    json_resp = json.loads(await resp.json())
+    # print(json_resp["quote"])
+
+    # logout
+    hash: str = json_resp["hash"]
+    await logout(session, hash, username, password)
+    await session.close()
+
+    print("# SUCCESS for", username)
 
 
 async def simple_multiclient_test():
@@ -128,7 +131,7 @@ async def simple_multiclient_test():
     for user in users:
         await simple_integration_test(user[0], user[1])
 
-    print("SUCCESS MULTI")
+    print("# SUCCESS MULTI")
 
 
 async def tests():
