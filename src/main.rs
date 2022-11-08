@@ -23,46 +23,40 @@ use utils::get_unix_time_in_secs;
 async fn get_time(item: web::Json<ReqTimeMessage>, req: HttpRequest) -> HttpResponse {
     let req_time = item.0;
 
-    let mut state = if let Some(data) = req.app_data::<web::Data<Mutex<State>>>() {
-        data.as_ref().lock().await
-    } else {
+    let Some(data) = req.app_data::<web::Data<Mutex<State>>>() else {
         return HttpResponse::from_error(ApiError::InternalStateUnavailable);
     };
+    let mut state = data.as_ref().lock().await;
 
     let time = get_unix_time_in_secs();
 
-    if let Some(pass) = state.users.get(&req_time.login) {
-        let hash = md5::compute(time.to_string() + pass);
-        let hash = format!("{hash:x}");
-        state
-            .authorized
-            .insert(req_time.login, (hash, UserState::InProcess));
-    } else {
+    let Some(pass) = state.users.get(&req_time.login) else {
         return HttpResponse::from_error(ApiError::UserNotExist);
-    }
+    };
 
-    if let Ok(resp) = serde_json::to_string(&RespTimeMessage { time }) {
-        HttpResponse::Ok().json(resp)
-    } else {
-        HttpResponse::from_error(ApiError::JsonConvertionFailed)
-    }
+    let hash = md5::compute(time.to_string() + pass);
+    let hash = format!("{hash:x}");
+    state
+        .authorized
+        .insert(req_time.login, (hash, UserState::InProcess));
+
+    let Ok(resp) = serde_json::to_string(&RespTimeMessage { time }) else {
+        return HttpResponse::from_error(ApiError::JsonConvertionFailed)
+    };
+    HttpResponse::Ok().json(resp)
 }
 
 async fn auth(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpResponse {
     let login_req = item.0;
 
-    let mut state = if let Some(data) = req.app_data::<web::Data<Mutex<State>>>() {
-        data.as_ref().lock().await
-    } else {
+    let Some(data) = req.app_data::<web::Data<Mutex<State>>>() else {
         return HttpResponse::from_error(ApiError::InternalStateUnavailable);
     };
+    let mut state = data.as_ref().lock().await;
 
-    let (last_hash, user_state) =
-        if let Some((last_hash, user_state)) = state.authorized.get(&login_req.login) {
-            (last_hash, user_state)
-        } else {
-            return HttpResponse::from_error(ApiError::AuthNotStarted);
-        };
+    let Some((last_hash, user_state)) = state.authorized.get(&login_req.login) else {
+       return HttpResponse::from_error(ApiError::AuthNotStarted);
+    };
 
     if UserState::InProcess != *user_state {
         return HttpResponse::from_error(ApiError::AuthNotStarted);
@@ -84,28 +78,24 @@ async fn auth(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpRespons
         (login_succ_mess.hash.clone(), UserState::Auth),
     );
 
-    if let Ok(resp) = serde_json::to_string(&login_succ_mess) {
-        HttpResponse::Ok().json(resp)
-    } else {
-        HttpResponse::from_error(ApiError::JsonConvertionFailed)
-    }
+    let Ok(resp) = serde_json::to_string(&login_succ_mess) else {
+        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
+    };
+
+    HttpResponse::Ok().json(resp)
 }
 
 async fn get_quote(item: web::Json<QuoteReqMessage>, req: HttpRequest) -> HttpResponse {
     let quote_req = item.0;
 
-    let mut state = if let Some(data) = req.app_data::<web::Data<Mutex<State>>>() {
-        data.as_ref().lock().await
-    } else {
+    let Some(data) = req.app_data::<web::Data<Mutex<State>>>() else {
         return HttpResponse::from_error(ApiError::InternalStateUnavailable);
     };
+    let mut state = data.as_ref().lock().await;
 
-    let (last_hash, user_state) =
-        if let Some((last_hash, user_state)) = state.authorized.get(&quote_req.login) {
-            (last_hash, user_state)
-        } else {
-            return HttpResponse::from_error(ApiError::AuthNotStarted);
-        };
+    let Some((last_hash, user_state)) = state.authorized.get(&quote_req.login) else {
+        return HttpResponse::from_error(ApiError::AuthNotStarted);
+    };
 
     let data = last_hash.clone() + &quote_req.pow.to_string();
     let pow_hash = md5::compute(data);
@@ -136,36 +126,30 @@ async fn get_quote(item: web::Json<QuoteReqMessage>, req: HttpRequest) -> HttpRe
         (quote_resp_mess.hash.clone(), UserState::Auth),
     );
 
-    if let Ok(resp) = serde_json::to_string(&quote_resp_mess) {
-        HttpResponse::Ok().json(resp)
-    } else {
-        HttpResponse::from_error(ApiError::JsonConvertionFailed)
-    }
+    let Ok(resp) = serde_json::to_string(&quote_resp_mess) else {
+        return HttpResponse::from_error(ApiError::JsonConvertionFailed)
+    };
+
+    HttpResponse::Ok().json(resp)
 }
 
 async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResponse {
     let logout_req = item.0;
 
-    let mut state = if let Some(data) = req.app_data::<web::Data<Mutex<State>>>() {
-        data.as_ref().lock().await
-    } else {
+    let Some(data) = req.app_data::<web::Data<Mutex<State>>>() else {
         return HttpResponse::from_error(ApiError::InternalStateUnavailable);
     };
+    let mut state = data.as_ref().lock().await;
 
-    let (last_hash, user_state) =
-        if let Some((last_hash, user_state)) = state.authorized.get(&logout_req.login) {
-            (last_hash, user_state)
-        } else {
-            return HttpResponse::from_error(ApiError::AuthNotStarted);
-        };
+    let Some((last_hash, user_state)) = state.authorized.get(&logout_req.login) else {
+        return HttpResponse::from_error(ApiError::AuthNotStarted);
+    };
 
-    let hash = if let Some(pass) = state.users.get(&logout_req.login) {
-        let hash = md5::compute(last_hash.to_owned() + pass);
-        let hash = format!("{hash:x}");
-        hash
-    } else {
+    let Some(pass) = state.users.get(&logout_req.login) else {
         return HttpResponse::from_error(ApiError::UserNotExist);
     };
+    let hash = md5::compute(last_hash.to_owned() + pass);
+    let hash = format!("{hash:x}");
 
     if UserState::Auth != *user_state {
         return HttpResponse::from_error(ApiError::UserNotAuth);
@@ -178,11 +162,10 @@ async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResp
     let logout_resp_mess = LogoutSuccMessage {};
     state.authorized.remove(&logout_req.login);
 
-    if let Ok(resp) = serde_json::to_string(&logout_resp_mess) {
-        HttpResponse::Ok().json(resp)
-    } else {
-        HttpResponse::from_error(ApiError::JsonConvertionFailed)
-    }
+    let Ok(resp) = serde_json::to_string(&logout_resp_mess) else {
+        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
+    };
+    HttpResponse::Ok().json(resp)
 }
 
 #[actix_web::main]
