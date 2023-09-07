@@ -5,37 +5,56 @@ use actix_web::{
 };
 use derive_more::{Display, Error};
 
+/// Represents various possible API errors that can occur during request processing.
+///
+/// This enum provides a mapping from internal error states to HTTP responses that
+/// can be sent back to the client, encapsulating the error's nature and HTTP status code.
 #[derive(Debug, Display, Error)]
 pub enum ApiError {
-    #[display(fmt = "auth not started")]
+    /// Indicates that authentication has not been initiated.
+    #[display(fmt = "Authentication not started")]
     AuthNotStarted,
 
-    #[display(fmt = "user not auth")]
+    /// Indicates that a user is not authenticated.
+    #[display(fmt = "User not authenticated")]
     UserNotAuth,
 
-    #[display(fmt = "invalid password")]
+    /// Indicates that the provided hash (password) is invalid.
+    #[display(fmt = "Invalid password hash")]
     InvalidHash,
 
-    #[display(fmt = "user not exist")]
+    /// Indicates that the user does not exist in the system.
+    #[display(fmt = "User does not exist")]
     UserNotExist,
 
-    #[display(fmt = "json convertion failed")]
+    /// Indicates an error during JSON conversion.
+    #[display(fmt = "JSON conversion failed")]
     JsonConvertionFailed,
 
-    #[display(fmt = "internal state unavalible")]
+    /// Indicates that the internal state of the application is unavailable.
+    #[display(fmt = "Internal state unavailable")]
     InternalStateUnavailable,
 
-    #[display(fmt = "pov calc failled")]
+    /// Indicates an error during the proof-of-work check.
+    #[display(fmt = "Proof-of-work check failed")]
     PovCheckFailed,
 }
 
 impl error::ResponseError for ApiError {
+    /// Generates an `HttpResponse` for the current API error.
+    ///
+    /// This function maps each `ApiError` variant to an appropriate HTTP response,
+    /// setting the status code and including the error message in the response body.
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.status_code())
             .insert_header(ContentType::html())
             .body(self.to_string())
     }
 
+    /// Maps the `ApiError` variant to the corresponding `StatusCode`.
+    ///
+    /// Each error variant is associated with an HTTP status code that best describes
+    /// the nature of the error to the client.
     fn status_code(&self) -> StatusCode {
         match *self {
             ApiError::UserNotExist => StatusCode::NOT_FOUND,

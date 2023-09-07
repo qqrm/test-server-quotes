@@ -1,24 +1,48 @@
 use std::collections::HashMap;
 
+/// Represents a user's login credentials.
 type Login = String;
+
+/// Represents a user's password.
 type Pass = String;
+
+/// Represents the last hash of a user.
 type LastHash = String;
 
+/// Enumerates possible user states.
+///
+/// * `Auth`: Indicates that the user is authenticated.
+/// * `InProcess`: Indicates that the user authentication is in progress.
 #[derive(PartialEq, Debug)]
 pub enum UserState {
     Auth,
     InProcess,
 }
 
+/// Represents the current state of the application.
+///
+/// Contains information about registered users, authenticated users,
+/// available quotes, and the current difficulty level for Proof-of-Work.
 #[derive(Debug)]
 pub struct State {
+    /// Map of registered users and their passwords.
     pub users: HashMap<Login, Pass>,
+
+    /// Map of authenticated users, their last hash, and their authentication state.
     pub authorized: HashMap<Login, (LastHash, UserState)>,
+
+    /// Collection of available quotes to be provided to authenticated users.
     pub quotes: Vec<String>,
+
+    /// Difficulty level for Proof-of-Work.
     pub difficulty: u64,
 }
-
 impl State {
+    /// Constructs a new `State` with predefined users and available quotes.
+    ///
+    /// * Returns
+    ///
+    /// A `State` object initialized with predefined values.
     pub fn new() -> State {
         // users already registered (better way is using session id or smth)
         let users = HashMap::from([
