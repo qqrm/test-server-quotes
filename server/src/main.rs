@@ -1,25 +1,21 @@
 mod errors;
-pub mod messages;
 mod state;
 mod utils;
 
-use crate::{
-    messages::{
-        login::LoginSuccMessage, logout::LogoutSuccMessage, quote::QuoteRespMessage,
-        time::RespTimeMessage,
-    },
-    state::UserState,
-};
+use crate::state::UserState;
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use errors::ApiError;
 use futures::lock::Mutex;
+use messages::login::LoginSuccMessage;
+use messages::logout::LogoutSuccMessage;
+use messages::quote::QuoteRespMessage;
+use messages::time::RespTimeMessage;
 use messages::{
     login::LoginReqMessage, logout::LogoutReqMessage, quote::QuoteReqMessage, time::ReqTimeMessage,
 };
 use rand::prelude::SliceRandom;
 use state::State;
 use utils::get_unix_time_in_secs;
-
 /// Retrieves the current Unix timestamp for a user and sets their authentication process.
 ///
 /// This function handles a user's request to get the current Unix timestamp. It performs
@@ -62,7 +58,7 @@ async fn get_time(item: web::Json<ReqTimeMessage>, req: HttpRequest) -> HttpResp
         .insert(req_time.login, (hash_str, UserState::InProcess));
 
     let Ok(resp) = serde_json::to_string(&RespTimeMessage { time }) else {
-        return HttpResponse::from_error(ApiError::JsonConvertionFailed)
+        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
     };
 
     HttpResponse::Ok().json(resp)
@@ -95,7 +91,7 @@ async fn auth(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpRespons
 
     // Check if user's authentication process has started.
     let Some((last_hash, user_state)) = state.authorized.get(&login_req.login) else {
-       return HttpResponse::from_error(ApiError::AuthNotStarted);
+        return HttpResponse::from_error(ApiError::AuthNotStarted);
     };
 
     // Ensure that the user is in the process of authenticating.

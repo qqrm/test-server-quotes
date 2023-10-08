@@ -7,15 +7,33 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'test-server-quotes'",
+            "name": "Debug client",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=test-server-quotes",
+                    "--bin=client",
                     "--package=test-server-quotes"
                 ],
                 "filter": {
-                    "name": "test-server-quotes",
+                    "name": "client",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug server",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=server",
+                    "--package=test-server-quotes"
+                ],
+                "filter": {
+                    "name": "server",
                     "kind": "bin"
                 }
             },
