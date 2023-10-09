@@ -1,0 +1,25 @@
+# Use the official Rust image as the build environment
+FROM rust:latest as builder
+
+# Set the working directory in the Docker container
+WORKDIR /usr/src/server-quotes-client
+
+# Copy the current directory contents into the container at /usr/src/server-quotes-client
+COPY . /usr/src/server-quotes-client
+
+# Copy the messages directory contents into the container at /usr/src/messages
+COPY messages /usr/src/messages
+
+# Build the server-quotes-client project, release version
+RUN cargo build --release
+
+# Runtime image
+FROM ubuntu:latest
+
+RUN apt-get update && apt install -y openssl
+
+# Copy the client binary from builder to the current directory in the new image
+COPY --from=builder /usr/src/server-quotes-client/target/release/client /usr/local/bin/client
+
+# Command to run the client
+CMD ["client"]

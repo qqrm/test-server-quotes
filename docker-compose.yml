@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.server
+    image: server-image
+    container_name: server-container
+    networks:
+      - my-network
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile.client
+    image: client-image
+    container_name: client-container
+    networks:
+      - my-network
+    depends_on:
+      - server
+
+networks:
+  my-network:
+    name: quotes-network

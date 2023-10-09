@@ -1,0 +1,26 @@
+# Use the official Rust image as the build environment
+FROM rust:latest as builder
+
+# Set the working directory in the Docker container
+WORKDIR /usr/src/server-quotes-server
+
+# Now the path to the server directory should be ./server instead of .
+COPY server /usr/src/server-quotes-server
+
+# And the path to the messages directory should be ./messages instead of messages
+COPY messages /usr/src/messages
+
+# Build the server-quotes-server project, release version
+RUN cargo build --release
+
+# Runtime image
+FROM ubuntu:latest
+
+# Copy the server binary from builder to the current directory in the new image
+COPY --from=builder /usr/src/server-quotes-server/target/release/server /usr/local/bin/server
+
+# Install necessary libraries that might be required at runtime
+RUN apt-get update && apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
+
+# Command to run the server
+CMD ["server"]

@@ -6,6 +6,7 @@ use crate::state::UserState;
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use errors::ApiError;
 use futures::lock::Mutex;
+
 use messages::login::LoginSuccMessage;
 use messages::logout::LogoutSuccMessage;
 use messages::quote::QuoteRespMessage;
@@ -16,6 +17,7 @@ use messages::{
 use rand::prelude::SliceRandom;
 use state::State;
 use utils::get_unix_time_in_secs;
+
 /// Retrieves the current Unix timestamp for a user and sets their authentication process.
 ///
 /// This function handles a user's request to get the current Unix timestamp. It performs
@@ -57,11 +59,7 @@ async fn get_time(item: web::Json<ReqTimeMessage>, req: HttpRequest) -> HttpResp
         .authorized
         .insert(req_time.login, (hash_str, UserState::InProcess));
 
-    let Ok(resp) = serde_json::to_string(&RespTimeMessage { time }) else {
-        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
-    };
-
-    HttpResponse::Ok().json(resp)
+    HttpResponse::Ok().json(RespTimeMessage { time })
 }
 
 /// Authenticates a user based on the provided login details.
@@ -114,14 +112,10 @@ async fn auth(item: web::Json<LoginReqMessage>, req: HttpRequest) -> HttpRespons
         .insert(login_req.login, (new_hash_str.clone(), UserState::Auth));
 
     // Return the new authentication hash to the user.
-    let Ok(resp) = serde_json::to_string(&LoginSuccMessage {
+    HttpResponse::Ok().json(LoginSuccMessage {
         hash: new_hash_str,
         difficulty: state.difficulty,
-    }) else {
-        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
-    };
-
-    HttpResponse::Ok().json(resp)
+    })
 }
 
 /// Handles the logic for getting a quote.
@@ -146,7 +140,7 @@ async fn get_quote(item: web::Json<QuoteReqMessage>, req: HttpRequest) -> HttpRe
 
     // Compute the proof of work hash
     let pow_data = format!("{}{}", last_hash, quote_req.pow);
-    let pow_hash = format!("{:x}", md5::compute(&pow_data));
+    let pow_hash = format!("{:x}", md5::compute(pow_data));
 
     // Ensure user is authenticated
     if UserState::Auth != *user_state {
@@ -161,26 +155,20 @@ async fn get_quote(item: web::Json<QuoteReqMessage>, req: HttpRequest) -> HttpRe
     // Compute new hash for the quote response
     let new_hash = format!("{:x}", md5::compute(last_hash));
 
-    // Create quote response message
-    let quote_resp_mess = QuoteRespMessage {
+    state
+        .authorized
+        .insert(quote_req.login, (new_hash.clone(), UserState::Auth));
+
+    // Quote response
+    HttpResponse::Ok().json(QuoteRespMessage {
         quote: state
             .quotes
             .choose(&mut rand::thread_rng())
             .unwrap()
             .clone(),
-        hash: new_hash.clone(),
+        hash: new_hash,
         difficulty: state.difficulty,
-    };
-
-    state
-        .authorized
-        .insert(quote_req.login, (new_hash, UserState::Auth));
-
-    let Ok(resp) = serde_json::to_string(&quote_resp_mess) else {
-        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
-    };
-
-    HttpResponse::Ok().json(resp)
+    })
 }
 
 /// Handles the logic for logging out a user.
@@ -222,16 +210,10 @@ async fn logout(item: web::Json<LogoutReqMessage>, req: HttpRequest) -> HttpResp
         return HttpResponse::from_error(ApiError::InvalidHash);
     }
 
-    // Create the logout success message and remove the user from the authorized list.
-    let logout_resp_mess = LogoutSuccMessage {};
+    // Remove the user from the authorized list.
     state.authorized.remove(&logout_req.login);
 
-    // Convert the message to JSON.
-    let Ok(resp) = serde_json::to_string(&logout_resp_mess) else {
-        return HttpResponse::from_error(ApiError::JsonConvertionFailed);
-    };
-
-    HttpResponse::Ok().json(resp)
+    HttpResponse::Ok().json(LogoutSuccMessage {})
 }
 
 #[actix_web::main]
@@ -239,6 +221,9 @@ async fn main() -> std::io::Result<()> {
     // Set the logging level and initialize the logger.
     std::env::set_var("RUST_LOG", "actix_web=info");
     env_logger::init();
+
+    // Log a message indicating that the server is starting.
+    log::info!("Server Starting...");
 
     // Create a new shared state instance.
     let data = web::Data::new(Mutex::new(state::State::new()));
@@ -259,7 +244,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/logout").route(web::post().to(logout)))
     })
     // Bind the server to a specific address and port.
-    .bind(("127.0.0.1", 9999))?
+    .bind(("0.0.0.0", 80))?
     // Run the server.
     .run()
     .await

@@ -27,10 +27,6 @@ pub enum ApiError {
     #[display(fmt = "User does not exist")]
     UserNotExist,
 
-    /// Indicates an error during JSON conversion.
-    #[display(fmt = "JSON conversion failed")]
-    JsonConvertionFailed,
-
     /// Indicates that the internal state of the application is unavailable.
     #[display(fmt = "Internal state unavailable")]
     InternalStateUnavailable,
@@ -59,7 +55,6 @@ impl error::ResponseError for ApiError {
         match *self {
             ApiError::UserNotExist => StatusCode::NOT_FOUND,
             ApiError::UserNotAuth => StatusCode::UNAUTHORIZED,
-            ApiError::JsonConvertionFailed => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::InternalStateUnavailable => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::InvalidHash => StatusCode::UNAUTHORIZED,
             ApiError::AuthNotStarted => StatusCode::BAD_REQUEST,
