@@ -13,7 +13,8 @@ futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 thiserror = "1.0"
 md5 = "0.7"
-
+openssl-sys = "0.9.93"
+openssl = { version = "0.10", features = ["vendored"] }
 
 [[bin]]
 name = "client"

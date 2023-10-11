@@ -4,6 +4,12 @@ FROM rust:latest as builder
 # Set the working directory in the Docker container
 WORKDIR /usr/src/server-quotes-server
 
+# Install C/C++ musl toolchain
+RUN apt-get update && apt-get install -y musl-tools
+
+# Install the linux-musl build target
+RUN rustup target add x86_64-unknown-linux-musl
+
 # Now the path to the server directory should be ./server instead of .
 COPY server /usr/src/server-quotes-server
 
@@ -11,16 +17,16 @@ COPY server /usr/src/server-quotes-server
 COPY messages /usr/src/messages
 
 # Build the server-quotes-server project, release version
-RUN cargo build --release
+RUN cargo build --release --target x86_64-unknown-linux-musl
 
-# Runtime image
-FROM ubuntu:latest
+# Use a slim image for running the application
+FROM alpine as runtime
 
 # Copy the server binary from builder to the current directory in the new image
-COPY --from=builder /usr/src/server-quotes-server/target/release/server /usr/local/bin/server
+COPY --from=builder /usr/src/server-quotes-server/target/x86_64-unknown-linux-musl/release/server /bin/server
 
 # Install necessary libraries that might be required at runtime
-RUN apt-get update && apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apk --no-cache add libssl1.1
 
 # Command to run the server
-CMD ["server"]
+CMD ["/bin/server"]

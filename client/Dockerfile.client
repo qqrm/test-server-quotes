@@ -4,6 +4,11 @@ FROM rust:latest as builder
 # Set the working directory in the Docker container
 WORKDIR /usr/src/server-quotes-client
 
+# Install C/C++ musl toolchain and libudev-dev
+RUN apt-get update && \
+    apt-get install -y musl-tools libudev-dev && \
+    rustup target add x86_64-unknown-linux-musl
+
 # Copy the current directory contents into the container at /usr/src/server-quotes-client
 COPY . /usr/src/server-quotes-client
 
@@ -11,15 +16,19 @@ COPY . /usr/src/server-quotes-client
 COPY messages /usr/src/messages
 
 # Build the server-quotes-client project, release version
-RUN cargo build --release
+RUN cargo build --target x86_64-unknown-linux-musl --release
 
-# Runtime image
-FROM ubuntu:latest
+# (Optional) Remove debug symbols
+RUN strip target/x86_64-unknown-linux-musl/release/client
 
-RUN apt-get update && apt install -y openssl
+# Use a slim image for running the application
+FROM alpine as runtime
+
+# Install OpenSSL
+RUN apk --no-cache add openssl
 
 # Copy the client binary from builder to the current directory in the new image
-COPY --from=builder /usr/src/server-quotes-client/target/release/client /usr/local/bin/client
+COPY --from=builder /usr/src/server-quotes-client/target/x86_64-unknown-linux-musl/release/client /bin/client
 
 # Command to run the client
-CMD ["client"]
+CMD ["/bin/client"]
