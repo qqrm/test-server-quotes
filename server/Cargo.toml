@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [profile.release]
-strip = true
+panic = "abort"
+codegen-units = 1
 lto = true
-panic = 'abort'
+incremental = false
+opt-level = "s"
+strip = true
 
 [dependencies]
 messages = { path = "../messages" }
